@@ -1,3 +1,19 @@
+'''
+
+label encode (2 categories)
+one-hot encode (3+ categories
+    align train and test - one-hot adds columns
+determine correlations
+handle anomalies
+impute missing data
+
+Feature engineering
+    polynomial
+    domain knowledge
+
+
+'''
+
 # numpy and pandas for data manipulation
 import numpy as np
 import pandas as pd
@@ -46,6 +62,7 @@ def missing_values_table(df):
 
 # Training data
 app_train = pd.read_csv('./data/application_train.csv')
+# app_train = pd.read_csv('./data/sample/application_train.csv')
 print('Training data shape: ', app_train.shape)
 print(app_train.head())
 
@@ -214,7 +231,97 @@ sns.heatmap(ext_data_corrs, cmap = plt.cm.RdYlBu_r, vmin = -0.25, annot = True, 
 plt.title('Correlation Heatmap');
 
 # iterate through the sources
+
 '''
+*************************
+
+col_count = 0
+column_headers = []
+
+for col in app_train:
+    column_headers.append(col)
+    col_count += 1
+
+# imputer for handling missing values
+from sklearn.preprocessing import Imputer
+imputer = Imputer(strategy = 'median')
+app_train_array = imputer.fit_transform(app_train)
+
+
+app_train = pd.DataFrame(app_train_array, columns = column_headers)
+
+
+
+
+************************
+'''
+
+'''
+************************
+'''
+
+from sklearn.preprocessing import MinMaxScaler, Imputer
+
+# Drop the target from the training data
+if 'TARGET' in app_train:
+    train = app_train.drop(columns=['TARGET'])
+else:
+    train = app_train.copy()
+
+# Feature names
+features = list(train.columns)
+
+# Copy of the testing data
+test = app_test.copy()
+
+# Median imputation of missing values
+imputer = Imputer(strategy='median')
+
+# Scale each feature to 0-1
+scaler = MinMaxScaler(feature_range=(0, 1))
+
+# Fit on the training data
+imputer.fit(train)
+
+# Transform both training and testing data
+train = imputer.transform(train)
+test = imputer.transform(app_test)
+
+# Repeat with the scaler
+scaler.fit(train)
+train = scaler.transform(train)
+test = scaler.transform(test)
+
+print('Training data shape: ', train.shape)
+print('Testing data shape: ', test.shape)
+
+'''
+************************
+NEW - This is a work around to impute the data to remove the NaNs before plotting. But gets in the way of how
+the original code worked
+
+col_count = 0
+column_headers = []
+
+for col in app_train:
+    column_headers.append(col)
+    col_count += 1
+
+# imputer for handling missing values
+from sklearn.preprocessing import Imputer
+imputer = Imputer(strategy = 'median')
+app_train_array = imputer.fit_transform(app_train)
+
+
+app_train = pd.DataFrame(app_train_array, columns = column_headers)
+
+'''
+
+
+'''
+************************
+ORIGINAL - This was how the original code was, however it left NaNs in the data so the graphing blew up
+
 plt.figure(figsize = (10, 12))
 
 # iterate through the sources
@@ -232,7 +339,9 @@ for i, source in enumerate(['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']):
     plt.xlabel('%s' % source); plt.ylabel('Density');
     
 plt.tight_layout(h_pad = 2.5)
+
 '''
+
 # Copy the data for plotting
 plot_data = ext_data.drop(columns = ['DAYS_BIRTH']).copy()
 
@@ -265,6 +374,9 @@ grid.map_diag(sns.kdeplot)
 grid.map_lower(sns.kdeplot, cmap = plt.cm.OrRd_r);
 
 plt.suptitle('Ext Source and Age Features Pairs Plot', size = 32, y = 1.05);
+
+
+
 
 plt.show()
 
