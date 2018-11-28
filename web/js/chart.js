@@ -28,6 +28,9 @@ function completeChart(data) {
         .domain([0, d3.max(data)])
         .range([0, 420]);
 
+d3.select("body").transition()
+    .style("background-color", "black");
+
     d3.select(".chart")
       .selectAll("div")
         .data(data)

@@ -6,6 +6,7 @@ one-hot encode (3+ categories
 determine correlations
 handle anomalies
 impute missing data
+scale features
 
 Feature engineering
     polynomial
@@ -232,68 +233,6 @@ plt.title('Correlation Heatmap');
 
 # iterate through the sources
 
-'''
-*************************
-
-col_count = 0
-column_headers = []
-
-for col in app_train:
-    column_headers.append(col)
-    col_count += 1
-
-# imputer for handling missing values
-from sklearn.preprocessing import Imputer
-imputer = Imputer(strategy = 'median')
-app_train_array = imputer.fit_transform(app_train)
-
-
-app_train = pd.DataFrame(app_train_array, columns = column_headers)
-
-
-
-
-************************
-'''
-
-'''
-************************
-'''
-
-from sklearn.preprocessing import MinMaxScaler, Imputer
-
-# Drop the target from the training data
-if 'TARGET' in app_train:
-    train = app_train.drop(columns=['TARGET'])
-else:
-    train = app_train.copy()
-
-# Feature names
-features = list(train.columns)
-
-# Copy of the testing data
-test = app_test.copy()
-
-# Median imputation of missing values
-imputer = Imputer(strategy='median')
-
-# Scale each feature to 0-1
-scaler = MinMaxScaler(feature_range=(0, 1))
-
-# Fit on the training data
-imputer.fit(train)
-
-# Transform both training and testing data
-train = imputer.transform(train)
-test = imputer.transform(app_test)
-
-# Repeat with the scaler
-scaler.fit(train)
-train = scaler.transform(train)
-test = scaler.transform(test)
-
-print('Training data shape: ', train.shape)
-print('Testing data shape: ', test.shape)
 
 '''
 ************************
@@ -317,7 +256,6 @@ app_train = pd.DataFrame(app_train_array, columns = column_headers)
 
 '''
 
-
 '''
 ************************
 ORIGINAL - This was how the original code was, however it left NaNs in the data so the graphing blew up
@@ -326,18 +264,18 @@ plt.figure(figsize = (10, 12))
 
 # iterate through the sources
 for i, source in enumerate(['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']):
-    
+
     # create a new subplot for each source
     plt.subplot(3, 1, i + 1)
     # plot repaid loans
     sns.kdeplot(app_train.loc[app_train['TARGET'] == 0, source], label = 'target == 0')
     # plot loans that were not repaid
     sns.kdeplot(app_train.loc[app_train['TARGET'] == 1, source], label = 'target == 1')
-    
+
     # Label the plots
     plt.title('Distribution of %s by Target Value' % source)
     plt.xlabel('%s' % source); plt.ylabel('Density');
-    
+
 plt.tight_layout(h_pad = 2.5)
 
 '''
@@ -375,8 +313,140 @@ grid.map_lower(sns.kdeplot, cmap = plt.cm.OrRd_r);
 
 plt.suptitle('Ext Source and Age Features Pairs Plot', size = 32, y = 1.05);
 
+'''
+Impute and scale features
+'''
+from sklearn.preprocessing import MinMaxScaler, Imputer
 
+# Drop the target from the training data
+if 'TARGET' in app_train:
+    train = app_train.drop(columns=['TARGET'])
+else:
+    train = app_train.copy()
+
+# Feature names
+features = list(train.columns)
+
+# Copy of the testing data
+test = app_test.copy()
+
+# Median imputation of missing values
+imputer = Imputer(strategy='median')
+
+# Scale each feature to 0-1
+scaler = MinMaxScaler(feature_range=(0, 1))
+
+# Fit on the training data
+imputer.fit(train)
+
+# Transform both training and testing data
+train = imputer.transform(train)
+test = imputer.transform(app_test)
+
+# Repeat with the scaler
+scaler.fit(train)
+train = scaler.transform(train)
+test = scaler.transform(test)
+
+print('Training data shape: ', train.shape)
+print('Testing data shape: ', test.shape)
+
+'''
+Logistic Regression Model
+'''
+from sklearn.linear_model import LogisticRegression
+
+# Make the model with the specified regularization parameter
+log_reg = LogisticRegression(C = 0.0001)
+
+# Train on the training data
+log_reg.fit(train, train_labels)
+
+# Make predictions
+# Make sure to select the second column only
+log_reg_pred = log_reg.predict_proba(test)[:, 1]
+
+# Submission dataframe
+submit = app_test[['SK_ID_CURR']]
+submit['TARGET'] = log_reg_pred
+
+submit.head()
+
+# Save the submission to a csv file
+submit.to_csv('log_reg_baseline.csv', index = False)
+
+
+'''
+Random Forest Model
+'''
+
+from sklearn.ensemble import RandomForestClassifier
+
+# Make the random forest classifier
+random_forest = RandomForestClassifier(n_estimators = 100, random_state = 50, verbose = 1, n_jobs = -1)
+
+# Train on the training data
+random_forest.fit(train, train_labels)
+
+# Extract feature importances
+feature_importance_values = random_forest.feature_importances_
+feature_importances = pd.DataFrame({'feature': features, 'importance': feature_importance_values})
+
+# Make predictions on the test data
+predictions = random_forest.predict_proba(test)[:, 1]
+
+# Make a submission dataframe
+submit = app_test[['SK_ID_CURR']]
+submit['TARGET'] = predictions
+
+# Save the submission dataframe
+submit.to_csv('random_forest_baseline.csv', index = False)
+
+
+def plot_feature_importances(df):
+    """
+    Plot importances returned by a model. This can work with any measure of
+    feature importance provided that higher importance is better.
+
+    Args:
+        df (dataframe): feature importances. Must have the features in a column
+        called `features` and the importances in a column called `importance
+
+    Returns:
+        shows a plot of the 15 most importance features
+
+        df (dataframe): feature importances sorted by importance (highest to lowest)
+        with a column for normalized importance
+        """
+
+    # Sort features according to importance
+    df = df.sort_values('importance', ascending=False).reset_index()
+
+    # Normalize the feature importances to add up to one
+    df['importance_normalized'] = df['importance'] / df['importance'].sum()
+
+    # Make a horizontal bar chart of feature importances
+    plt.figure(figsize=(10, 6))
+    ax = plt.subplot()
+
+    # Need to reverse the index to plot most important on top
+    ax.barh(list(reversed(list(df.index[:15]))),
+            df['importance_normalized'].head(15),
+            align='center', edgecolor='k')
+
+    # Set the yticks and labels
+    ax.set_yticks(list(reversed(list(df.index[:15]))))
+    ax.set_yticklabels(df['feature'].head(15))
+
+    # Plot labeling
+    plt.xlabel('Normalized Importance');
+    plt.title('Feature Importances')
+    plt.show()
+
+    return df
+
+# Show the feature importances for the default features
+feature_importances_sorted = plot_feature_importances(feature_importances)
 
 
 plt.show()
-
